@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>三年級數學力檢核工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- MathJax 數學公式渲染設定 -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            },
+            options: { enableMenu: false }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
+        .math-card { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
+        .label-selected { background-color: #3b82f6 !important; color: white !important; }
+        .nav-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
+        .loading-spinner { border: 4px solid rgba(0,0,0,0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <script>
+        // 重要：請在此貼上您部署後的 GAS 網頁應用程式網址
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxILghUerfOt33S6OCgnlA4VheMgYZ_k76DGzN9Ao3QdFbKkxc_cxW0LL1Q0ZVOzygTAg/exec"; 
+    </script>
+
+    <!-- 導覽列 -->
+    <nav class="bg-white shadow-sm mb-6">
+        <div class="max-w-5xl mx-auto px-4 flex justify-between h-16 items-center">
+            <span class="font-bold text-xl text-blue-800">🧮 數學檢核系統 (GAS)</span>
+            <div class="flex space-x-4">
+                <button onclick="switchView('student')" id="nav-student" class="px-3 py-2 font-medium nav-active">學生測驗</button>
+                <button onclick="switchView('teacher')" id="nav-teacher" class="px-3 py-2 font-medium text-gray-500">教師儀表板</button>
+            </div>
+        </div>
+    </nav>
+
+    <div id="app" class="max-w-4xl mx-auto px-4 pb-20">
+        
+        <!-- 學生視角 -->
+        <div id="student-view">
+            <div id="start-screen" class="bg-white p-8 rounded-3xl math-card text-center">
+                <h1 class="text-3xl font-bold text-blue-800 mb-6">三年級數學力檢核</h1>
+                <div class="max-w-xs mx-auto mb-8">
+                    <label class="block text-left text-gray-700 mb-2 font-medium">請輸入你的姓名或座號：</label>
+                    <input type="text" id="student-name" class="w-full p-4 border-2 border-blue-100 rounded-xl focus:border-blue-500 outline-none text-center text-xl" placeholder="例如：王小明">
+                </div>
+                <button onclick="startQuiz()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-12 rounded-full text-xl transition-all shadow-lg">
+                    開始測驗
+                </button>
+            </div>
+
+            <div id="quiz-screen" class="hidden">
+                <div class="mb-4 flex justify-between items-center text-sm font-medium text-blue-600">
+                    <span id="progress-text">問題 1 / 10</span>
+                    <span id="category-text">概念分類</span>
+                </div>
+                <div class="w-full bg-blue-100 rounded-full h-3 mb-8">
+                    <div id="progress-bar" class="bg-blue-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <div id="question-container" class="bg-white p-8 rounded-3xl math-card"></div>
+            </div>
+
+            <div id="result-screen" class="hidden text-center bg-white p-10 rounded-3xl math-card">
+                <div id="upload-status" class="hidden mb-4 p-3 bg-blue-50 text-blue-700 rounded-xl flex items-center justify-center space-x-2">
+                    <div class="loading-spinner"></div>
+                    <span>正在儲存答案到老師的雲端試算表...</span>
+                </div>
+                <h2 class="text-3xl font-bold text-blue-800 mb-4">測驗完成！</h2>
+                <div class="text-6xl font-bold text-blue-600 mb-8" id="final-score-display">0</div>
+                <button onclick="location.reload()" class="bg-gray-100 px-8 py-3 rounded-xl font-bold text-gray-600">回首頁</button>
+            </div>
+        </div>
+
+        <!-- 教師視角 -->
+        <div id="teacher-view" class="hidden">
+            <!-- 密碼登入 -->
+            <div id="teacher-auth-screen" class="bg-white p-8 rounded-3xl math-card text-center max-w-sm mx-auto">
+                <div class="mb-4 text-4xl text-blue-600">🔐</div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">教師管理登入</h2>
+                <input type="password" id="teacher-password" class="w-full p-3 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none text-center mb-4" placeholder="請輸入密碼">
+                <button onclick="verifyTeacherPassword()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all">確認登入</button>
+                <p id="auth-error" class="text-red-500 mt-2 text-sm hidden">密碼錯誤，請重新輸入 (預設 1234)</p>
+            </div>
+
+            <!-- 載入中 -->
+            <div id="teacher-loading" class="hidden flex flex-col items-center justify-center py-20 space-y-4">
+                <div class="loading-spinner"></div>
+                <p class="text-gray-500">正在處理數據...</p>
+            </div>
+
+            <!-- 儀表板內容 -->
+            <div id="teacher-content" class="hidden space-y-6">
+                <!-- 頂部概況 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">全班答題概況</h2>
+                        <div class="flex space-x-6 mt-2" id="class-stats"></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button onclick="loadTeacherData()" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition-all">🔄 重新整理</button>
+                        <button onclick="showResetConfirm()" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 transition-all">🗑️ 重設資料</button>
+                        <button onclick="teacherLogout()" class="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-200 transition-all">登出</button>
+                    </div>
+                </div>
+
+                <!-- 題目分析區塊 -->
+                <div class="bg-white p-6 rounded-2xl shadow-sm">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="mr-2">📊</span> 題目答對率分析 (診斷教學弱點)
+                    </h3>
+                    <div id="question-analysis-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <!-- 題目統計會顯示在此 -->
+                    </div>
+                </div>
+
+                <!-- 學生列表 -->
+                <div class="bg-white rounded-2xl shadow-sm overflow-hidden overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-50 border-b text-gray-700">
+                            <tr>
+                                <th class="px-6 py-4 font-bold">學生姓名</th>
+                                <th class="px-6 py-4 font-bold text-center">總分</th>
+                                <th class="px-6 py-4 font-bold">測驗時間</th>
+                                <th class="px-6 py-4 font-bold text-right">詳情</th>
+                            </tr>
+                        </thead>
+                        <tbody id="student-list-body"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="gas-warning" class="hidden mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-center">
+                ⚠️ 請將部署後的網址填入 index.html 的第 36 行 GAS_WEB_APP_URL 變數中。
+            </div>
+        </div>
+    </div>
+
+    <!-- 詳情 Modal -->
+    <div id="detail-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white w-full max-w-2xl rounded-3xl max-h-[80vh] overflow-y-auto p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="modal-title" class="text-2xl font-bold text-blue-800">答題細節</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+            </div>
+            <div id="modal-content" class="space-y-4"></div>
+        </div>
+    </div>
+
+    <!-- 重設確認 Modal -->
+    <div id="reset-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center">
+            <div class="text-5xl mb-4 text-red-500">⚠️</div>
+            <h3 class="text-2xl font-bold text-gray-800 mb-2">確定要清空嗎？</h3>
+            <p class="text-gray-500 mb-8">這將刪除試算表中的所有紀錄（適用於切換班級）。</p>
+            <div class="flex gap-4">
+                <button onclick="closeResetModal()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold text-gray-600">取消</button>
+                <button onclick="resetAllData()" class="flex-1 bg-red-600 py-3 rounded-xl font-bold text-white shadow-lg shadow-red-200">確定刪除</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const categories = {
+            1: "乘法定義與關係", 2: "二位數乘一位數", 3: "三位數乘一位數",
+            4: "二位數除一位數", 5: "三位數除一位數", 6: "三位數除一位數(有餘數)"
+        };
+
+        const questions = [
+            { type: 'matching', category: 1, q: "請點選名稱標籤，再放入正確位置：", equation: { a: "15", b: "4", c: "60" }, labels: ["被乘數", "乘數", "積"], answer: ["被乘數", "乘數", "積"] },
+            { type: 'choice', category: 1, q: "在乘法算式中，將被乘數與乘數交換位置，計算出的「積」會改變嗎？", options: ["會改變", "不會改變", "不一定"], answer: 1 },
+            { type: 'input', category: 2, q: "計算： $35 \\times 4 = $ ?", answer: "140" },
+            { type: 'input', category: 2, q: "計算： $82 \\times 6 = $ ?", answer: "492" },
+            { type: 'input', category: 3, q: "計算： $250 \\times 3 = $ ?", answer: "750" },
+            { type: 'input', category: 3, q: "計算： $108 \\times 9 = $ ?", answer: "972" },
+            { type: 'input', category: 4, q: "計算： $72 \\div 3 = $ ?", answer: "24" },
+            { type: 'input', category: 5, q: "計算： $624 \\div 4 = $ ?", answer: "156" },
+            { type: 'remainder', category: 6, q: "計算： $527 \\div 5 = $ ?", answer: { q: "105", r: "2" } },
+            { type: 'remainder', category: 6, q: "計算： $841 \\div 3 = $ ?", answer: { q: "280", r: "1" } }
+        ];
+
+        let currentQuestionIndex = 0;
+        let studentResponses = [];
+        let studentName = "";
+        let selectedLabel = null;
+        let currentMatches = [null, null, null];
+        let allSessions = [];
+        let isTeacherAuthenticated = false;
+
+        function switchView(view) {
+            document.getElementById('student-view').classList.toggle('hidden', view !== 'student');
+            document.getElementById('teacher-view').classList.toggle('hidden', view !== 'teacher');
+            document.getElementById('nav-student').classList.toggle('nav-active', view === 'student');
+            document.getElementById('nav-teacher').classList.toggle('nav-active', view === 'teacher');
+            if (view === 'teacher') {
+                if (!isTeacherAuthenticated) showTeacherAuth();
+                else showTeacherDashboard();
+            }
+        }
+
+        function showTeacherAuth() {
+            document.getElementById('teacher-auth-screen').classList.remove('hidden');
+            document.getElementById('teacher-content').classList.add('hidden');
+            document.getElementById('teacher-loading').classList.add('hidden');
+            document.getElementById('teacher-password').focus();
+        }
+
+        function verifyTeacherPassword() {
+            if (document.getElementById('teacher-password').value === "1234") {
+                isTeacherAuthenticated = true;
+                showTeacherDashboard();
+            } else {
+                document.getElementById('auth-error').classList.remove('hidden');
+            }
+        }
+
+        function teacherLogout() {
+            isTeacherAuthenticated = false;
+            showTeacherAuth();
+        }
+
+        function showTeacherDashboard() {
+            document.getElementById('teacher-auth-screen').classList.add('hidden');
+            if (!GAS_WEB_APP_URL) document.getElementById('gas-warning').classList.remove('hidden');
+            else loadTeacherData();
+        }
+
+        function startQuiz() {
+            const name = document.getElementById('student-name').value.trim();
+            if (!name) return alert("請輸入姓名");
+            studentName = name;
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('quiz-screen').classList.remove('hidden');
+            showQuestion();
+        }
+
+        function showQuestion() {
+            const qData = questions[currentQuestionIndex];
+            const container = document.getElementById('question-container');
+            document.getElementById('progress-bar').style.width = `${((currentQuestionIndex + 1) / questions.length) * 100}%`;
+            document.getElementById('progress-text').innerText = `問題 ${currentQuestionIndex + 1} / ${questions.length}`;
+            document.getElementById('category-text').innerText = categories[qData.category];
+
+            let html = `<h2 class="text-2xl font-bold mb-8 text-gray-800">${qData.q}</h2>`;
+
+            if (qData.type === 'matching') {
+                html += `
+                    <div class="flex flex-wrap justify-center items-end gap-4 mb-12 text-3xl font-bold">
+                        <div class="flex flex-col items-center"><span>${qData.equation.a}</span><div onclick="placeLabel(0)" id="slot-0" class="w-24 h-12 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-sm text-blue-400 bg-blue-50 cursor-pointer">?</div></div>
+                        <span class="pb-2">$\\times$</span>
+                        <div class="flex flex-col items-center"><span>${qData.equation.b}</span><div onclick="placeLabel(1)" id="slot-1" class="w-24 h-12 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-sm text-blue-400 bg-blue-50 cursor-pointer">?</div></div>
+                        <span class="pb-2">$=$</span>
+                        <div class="flex flex-col items-center"><span>${qData.equation.c}</span><div onclick="placeLabel(2)" id="slot-2" class="w-24 h-12 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-sm text-blue-400 bg-blue-50 cursor-pointer">?</div></div>
+                    </div>
+                    <div class="flex justify-center gap-3 mb-8">${qData.labels.map((l, i) => `<button id="label-${i}" onclick="selectLabel('${l}', ${i})" class="px-4 py-2 border-2 border-blue-500 text-blue-600 rounded-full font-bold hover:bg-blue-50">${l}</button>`).join('')}</div>
+                    <button onclick="submitMatching()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg">確認送出</button>`;
+            } else if (qData.type === 'choice') {
+                html += `<div class="space-y-4">${qData.options.map((opt, i) => `<button onclick="handleChoice(${i})" class="w-full text-left p-4 rounded-xl border-2 border-gray-100 hover:border-blue-500 transition-all font-medium text-lg">${i+1}. ${opt}</button>`).join('')}</div>`;
+            } else if (qData.type === 'input') {
+                html += `<input type="number" id="math-input" class="w-full p-4 text-2xl border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none"><button onclick="submitInput()" class="w-full mt-6 bg-blue-600 text-white py-4 rounded-xl font-bold">下一題</button>`;
+            } else if (qData.type === 'remainder') {
+                html += `<div class="space-y-4"><div class="flex items-center space-x-4"><span class="font-bold">商：</span><input type="number" id="q-input" class="flex-1 p-4 text-2xl border-2 border-gray-100 rounded-xl"></div><div class="flex items-center space-x-4"><span class="font-bold">餘：</span><input type="number" id="r-input" class="flex-1 p-4 text-2xl border-2 border-gray-100 rounded-xl"></div><button onclick="submitRemainder()" class="w-full mt-6 bg-blue-600 text-white py-4 rounded-xl font-bold">下一題</button></div>`;
+            }
+
+            container.innerHTML = html;
+            if (window.MathJax) MathJax.typesetPromise([container]);
+        }
+
+        function selectLabel(l, i) { 
+            selectedLabel = l; 
+            document.querySelectorAll('[id^="label-"]').forEach(el => el.classList.remove('label-selected')); 
+            document.getElementById(`label-${i}`).classList.add('label-selected'); 
+        }
+        function placeLabel(i) { 
+            if (!selectedLabel) return; 
+            currentMatches[i] = selectedLabel; 
+            document.getElementById(`slot-${i}`).innerText = selectedLabel; 
+            document.getElementById(`slot-${i}`).classList.add('bg-blue-100', 'text-blue-700', 'font-bold'); 
+        }
+        function submitMatching() { 
+            if(currentMatches.includes(null)) return; 
+            handleFinalAnswer(currentMatches.join(','), questions[currentQuestionIndex].answer.join(',')); 
+            currentMatches = [null,null,null]; selectedLabel = null; 
+        }
+        function handleChoice(i) { handleFinalAnswer(questions[currentQuestionIndex].options[i], questions[currentQuestionIndex].options[questions[currentQuestionIndex].answer]); }
+        function submitInput() { const v = document.getElementById('math-input').value; if(!v) return; handleFinalAnswer(v, questions[currentQuestionIndex].answer); }
+        function submitRemainder() { const q = document.getElementById('q-input').value, r = document.getElementById('r-input').value; if(!q || !r) return; handleFinalAnswer(`商${q}餘${r}`, `商${questions[currentQuestionIndex].answer.q}餘${questions[currentQuestionIndex].answer.r}`); }
+
+        function handleFinalAnswer(userAns, correctAns) {
+            studentResponses.push({
+                question: questions[currentQuestionIndex].q,
+                category: categories[questions[currentQuestionIndex].category],
+                userAnswer: userAns,
+                correctAnswer: correctAns,
+                isCorrect: userAns == correctAns
+            });
+            currentQuestionIndex++;
+            if (currentQuestionIndex < questions.length) showQuestion();
+            else finishQuiz();
+        }
+
+        async function finishQuiz() {
+            document.getElementById('quiz-screen').classList.add('hidden');
+            document.getElementById('result-screen').classList.remove('hidden');
+            const score = Math.round((studentResponses.filter(r => r.isCorrect).length / questions.length) * 100);
+            document.getElementById('final-score-display').innerText = score;
+
+            if (!GAS_WEB_APP_URL) return;
+            document.getElementById('upload-status').classList.remove('hidden');
+            try {
+                await fetch(GAS_WEB_APP_URL, {
+                    method: "POST",
+                    mode: "no-cors",
+                    body: JSON.stringify({ action: "submit", studentName, score, responses: JSON.stringify(studentResponses) })
+                });
+                document.getElementById('upload-status').innerHTML = "✅ 已儲存至雲端試算表";
+            } catch (e) {
+                document.getElementById('upload-status').innerHTML = "❌ 儲存失敗，請確認網址";
+            }
+        }
+
+        async function loadTeacherData() {
+            document.getElementById('teacher-loading').classList.remove('hidden');
+            document.getElementById('teacher-content').classList.add('hidden');
+            try {
+                const response = await fetch(`${GAS_WEB_APP_URL}?action=get`);
+                const result = await response.json();
+                allSessions = result.data;
+                renderDashboard();
+            } catch (e) { alert("載入失敗：" + e.message); }
+            finally {
+                document.getElementById('teacher-loading').classList.add('hidden');
+                document.getElementById('teacher-content').classList.remove('hidden');
+            }
+        }
+
+        function renderDashboard() {
+            const listBody = document.getElementById('student-list-body');
+            const stats = document.getElementById('class-stats');
+            const analysisContainer = document.getElementById('question-analysis-container');
+            
+            if (!allSessions || allSessions.length === 0) {
+                listBody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-400">尚無作答紀錄</td></tr>';
+                stats.innerHTML = ""; 
+                analysisContainer.innerHTML = "<p class='col-span-full text-center text-gray-400'>尚無足夠數據進行題目分析</p>";
+                return;
+            }
+
+            // 1. 基本統計
+            const avg = Math.round(allSessions.reduce((a,b) => a + parseInt(b.score), 0) / allSessions.length);
+            stats.innerHTML = `<div class="text-blue-600">測驗人數: <b>${allSessions.length}</b></div><div class="text-green-600">全班平均: <b>${avg}</b></div>`;
+            
+            // 2. 題目答對率分析邏輯
+            const qStats = questions.map(() => ({ correct: 0, total: 0 }));
+            allSessions.forEach(session => {
+                try {
+                    const res = JSON.parse(session.responses);
+                    res.forEach((r, idx) => {
+                        if (qStats[idx]) {
+                            qStats[idx].total++;
+                            if (r.isCorrect) qStats[idx].correct++;
+                        }
+                    });
+                } catch(e) {}
+            });
+
+            analysisContainer.innerHTML = questions.map((q, i) => {
+                const stat = qStats[i];
+                const rate = stat.total > 0 ? Math.round((stat.correct / stat.total) * 100) : 0;
+                const isCritical = rate < 50; // 低於 50% 視為重點加強題目
+                
+                return `
+                    <div class="p-4 border rounded-xl bg-gray-50 flex flex-col justify-between">
+                        <div>
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-bold px-2 py-1 rounded ${isCritical ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}">
+                                    第 ${i+1} 題
+                                </span>
+                                <span class="text-lg font-bold ${isCritical ? 'text-red-600' : 'text-gray-700'}">${rate}% 答對率</span>
+                            </div>
+                            <div class="text-sm text-gray-600 mb-3 line-clamp-2" title="${q.q}">${q.q}</div>
+                        </div>
+                        <div>
+                            <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                                <div class="h-full ${isCritical ? 'bg-red-500' : 'bg-green-500'}" style="width: ${rate}%"></div>
+                            </div>
+                            <div class="text-[10px] text-gray-400 mt-1">答對 ${stat.correct} 人 / 總計 ${stat.total} 人</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // 3. 學生列表
+            listBody.innerHTML = allSessions.map(s => `
+                <tr class="border-b hover:bg-gray-50">
+                    <td class="px-6 py-4 font-medium">${s.studentName}</td>
+                    <td class="px-6 py-4 text-center font-bold text-blue-600">${s.score}</td>
+                    <td class="px-6 py-4 text-sm text-gray-500">${s.timestamp}</td>
+                    <td class="px-6 py-4 text-right"><button onclick="viewDetail('${s.id}')" class="text-blue-500 font-medium">查看詳情</button></td>
+                </tr>`).join('');
+            
+            // 重新渲染 LaTeX
+            if (window.MathJax) MathJax.typesetPromise([analysisContainer]);
+        }
+
+        function viewDetail(id) {
+            const s = allSessions.find(x => x.id == id);
+            const res = JSON.parse(s.responses);
+            document.getElementById('modal-title').innerText = `${s.studentName} 的答題紀錄`;
+            document.getElementById('modal-content').innerHTML = res.map((r, i) => `
+                <div class="p-4 border rounded-xl ${r.isCorrect ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}">
+                    <div class="font-bold text-sm text-gray-500 mb-1">第 ${i+1} 題 | ${r.category}</div>
+                    <div class="font-medium text-gray-800 mb-2">${r.question}</div>
+                    <div class="flex text-sm">
+                        <div class="mr-6">學生答案：<b class="${r.isCorrect ? 'text-green-600' : 'text-red-600'}">${r.userAnswer}</b></div>
+                        ${!r.isCorrect ? `<div class="text-gray-400">正確答案：${r.correctAnswer}</div>` : ''}
+                    </div>
+                </div>`).join('');
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        function showResetConfirm() { document.getElementById('reset-modal').classList.remove('hidden'); }
+        function closeResetModal() { document.getElementById('reset-modal').classList.add('hidden'); }
+        async function resetAllData() {
+            closeResetModal();
+            document.getElementById('teacher-loading').classList.remove('hidden');
+            document.getElementById('teacher-content').classList.add('hidden');
+            try {
+                await fetch(GAS_WEB_APP_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ action: "clear" }) });
+                setTimeout(loadTeacherData, 1500);
+            } catch (e) { alert("重設失敗"); }
+        }
+        function closeModal() { document.getElementById('detail-modal').classList.add('hidden'); }
+    </script>
+</body>
+</html>
