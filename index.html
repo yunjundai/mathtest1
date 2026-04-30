@@ -2,16 +2,12 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>三年級數學力檢核工具</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>三年級數學力檢核工具 (手寫同步教學版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- MathJax 數學公式渲染設定 -->
     <script>
         window.MathJax = {
-            tex: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']]
-            },
+            tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
             options: { enableMenu: false }
         };
     </script>
@@ -19,225 +15,343 @@
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
-        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f8fafc; }
-        .math-card { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); }
-        .label-selected { background-color: #3b82f6 !important; color: white !important; }
-        .nav-active { border-bottom: 3px solid #3b82f6; color: #3b82f6; }
-        .loading-spinner { border: 4px solid rgba(0,0,0,0.1); width: 36px; height: 36px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 1s linear infinite; }
+        body { font-family: 'Noto Sans TC', sans-serif; background-color: #f0f7ff; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        .math-card { box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border-radius: 1.5rem; }
+        
+        /* 拖曳樣式 */
+        .drag-item { cursor: grab; transition: all 0.2s; user-select: none; touch-action: none; }
+        .drag-item:active { cursor: grabbing; transform: scale(1.1); }
+        .drop-zone { border: 2px dashed #bfdbfe; transition: all 0.3s; position: relative; min-height: 44px; min-width: 80px; }
+        .drop-zone.drag-over { background-color: #dbeafe; border-color: #3b82f6; }
+        
+        /* 畫板樣式 */
+        #sketch-pad-container { width: 100%; position: relative; }
+        #sketch-pad { border: 2px solid #e2e8f0; background-color: #fff; cursor: crosshair; touch-action: none; border-radius: 1rem; width: 100%; height: auto; }
+        
+        .loading-spinner { border: 4px solid rgba(0,0,0,0.1); width: 30px; height: 30px; border-radius: 50%; border-left-color: #3b82f6; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .analysis-card { transition: transform 0.2s, box-shadow 0.2s; cursor: pointer; }
+        .analysis-card:hover { transform: translateY(-4px); box-shadow: 0 12px 20px -5px rgba(0, 0, 0, 0.15); }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .sketch-preview { max-width: 100%; border: 1px solid #eee; border-radius: 0.5rem; background: white; }
     </style>
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen pb-10">
 
     <script>
-        // 重要：請在此貼上您部署後的 GAS 網頁應用程式網址
-        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxILghUerfOt33S6OCgnlA4VheMgYZ_k76DGzN9Ao3QdFbKkxc_cxW0LL1Q0ZVOzygTAg/exec"; 
+        const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxILghUerfOt33S6OCgnlA4VheMgYZ_k76DGzN9Ao3QdFbKkxc_cxW0LL1Q0ZVOzygTAg/exec"; // 請在此填入您的 GAS 網址
     </script>
 
-    <!-- 導覽列 -->
-    <nav class="bg-white shadow-sm mb-6">
+    <nav class="bg-white shadow-sm mb-4 md:mb-6 sticky top-0 z-50">
         <div class="max-w-5xl mx-auto px-4 flex justify-between h-16 items-center">
-            <span class="font-bold text-xl text-blue-800">🧮 數學檢核系統 (GAS)</span>
-            <div class="flex space-x-4">
-                <button onclick="switchView('student')" id="nav-student" class="px-3 py-2 font-medium nav-active">學生測驗</button>
-                <button onclick="switchView('teacher')" id="nav-teacher" class="px-3 py-2 font-medium text-gray-500">教師儀表板</button>
+            <span class="font-bold text-lg md:text-xl text-blue-800 flex items-center">
+                <span class="mr-2">🧮</span><span class="hidden sm:inline">數學檢核系統 3.0</span><span class="sm:hidden">數學檢核</span>
+            </span>
+            <div class="flex space-x-1 md:space-x-2">
+                <button onclick="switchView('student')" id="nav-student" class="px-3 py-2 text-sm md:text-base text-blue-600 font-bold border-b-2 border-blue-600 transition-all">學生端</button>
+                <button onclick="switchView('teacher')" id="nav-teacher" class="px-3 py-2 text-sm md:text-base text-gray-500 font-bold border-b-2 border-transparent transition-all">教師端</button>
             </div>
         </div>
     </nav>
 
-    <div id="app" class="max-w-4xl mx-auto px-4 pb-20">
+    <div id="app" class="max-w-4xl mx-auto px-4">
         
-        <!-- 學生視角 -->
+        <!-- 學生端 -->
         <div id="student-view">
-            <div id="start-screen" class="bg-white p-8 rounded-3xl math-card text-center">
-                <h1 class="text-3xl font-bold text-blue-800 mb-6">三年級數學力檢核</h1>
-                <div class="max-w-xs mx-auto mb-8">
-                    <label class="block text-left text-gray-700 mb-2 font-medium">請輸入你的姓名或座號：</label>
-                    <input type="text" id="student-name" class="w-full p-4 border-2 border-blue-100 rounded-xl focus:border-blue-500 outline-none text-center text-xl" placeholder="例如：王小明">
+            <div id="start-screen" class="bg-white p-6 md:p-12 rounded-3xl math-card text-center max-w-lg mx-auto">
+                <div class="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <span class="text-4xl">🚀</span>
                 </div>
-                <button onclick="startQuiz()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-12 rounded-full text-xl transition-all shadow-lg">
-                    開始測驗
-                </button>
+                <h1 class="text-2xl md:text-3xl font-bold text-blue-800 mb-4">三年級數學力大挑戰</h1>
+                <p class="text-gray-500 mb-8">準備好展示你的數學實力並同步你的筆跡嗎？</p>
+                <div class="mb-8">
+                    <input type="text" id="student-name" class="w-full p-4 border-2 border-blue-100 rounded-2xl focus:border-blue-500 outline-none text-center text-xl shadow-sm transition-all" placeholder="輸入姓名或座號">
+                </div>
+                <button onclick="startQuiz()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl text-xl shadow-lg transition-all transform active:scale-95">開始挑戰</button>
             </div>
 
             <div id="quiz-screen" class="hidden">
-                <div class="mb-4 flex justify-between items-center text-sm font-medium text-blue-600">
-                    <span id="progress-text">問題 1 / 10</span>
-                    <span id="category-text">概念分類</span>
+                <div class="mb-4 flex justify-between items-center text-xs md:text-sm font-bold text-blue-600">
+                    <span id="progress-text">問題 1 / 11</span>
+                    <span id="category-text" class="bg-blue-100 px-3 py-1 rounded-full">分類</span>
                 </div>
-                <div class="w-full bg-blue-100 rounded-full h-3 mb-8">
-                    <div id="progress-bar" class="bg-blue-500 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                <div class="w-full bg-blue-100 rounded-full h-2.5 mb-6">
+                    <div id="progress-bar" class="bg-blue-500 h-2.5 rounded-full transition-all duration-500 w-0"></div>
                 </div>
-                <div id="question-container" class="bg-white p-8 rounded-3xl math-card"></div>
+                <div id="question-container" class="bg-white p-5 md:p-10 rounded-3xl math-card"></div>
             </div>
 
-            <div id="result-screen" class="hidden text-center bg-white p-10 rounded-3xl math-card">
-                <div id="upload-status" class="hidden mb-4 p-3 bg-blue-50 text-blue-700 rounded-xl flex items-center justify-center space-x-2">
+            <div id="result-screen" class="hidden text-center bg-white p-8 md:p-12 rounded-3xl math-card max-w-lg mx-auto">
+                <div id="upload-status" class="hidden mb-6 p-4 bg-blue-50 text-blue-700 rounded-2xl flex items-center justify-center space-x-3">
                     <div class="loading-spinner"></div>
-                    <span>正在儲存答案到老師的雲端試算表...</span>
+                    <span class="font-medium text-sm text-center">正在將你的答案與筆跡同步到雲端...</span>
                 </div>
-                <h2 class="text-3xl font-bold text-blue-800 mb-4">測驗完成！</h2>
-                <div class="text-6xl font-bold text-blue-600 mb-8" id="final-score-display">0</div>
-                <button onclick="location.reload()" class="bg-gray-100 px-8 py-3 rounded-xl font-bold text-gray-600">回首頁</button>
+                <h2 class="text-2xl md:text-3xl font-bold text-blue-800 mb-2 text-center">挑戰完成！</h2>
+                <div class="text-7xl md:text-8xl font-bold text-blue-600 my-10 drop-shadow-sm text-center" id="final-score-display">0</div>
+                <button onclick="location.reload()" class="w-full bg-gray-100 px-8 py-4 rounded-2xl font-bold text-gray-600 hover:bg-gray-200 transition-all">回到首頁</button>
             </div>
         </div>
 
-        <!-- 教師視角 -->
+        <!-- 教師端 -->
         <div id="teacher-view" class="hidden">
-            <!-- 密碼登入 -->
             <div id="teacher-auth-screen" class="bg-white p-8 rounded-3xl math-card text-center max-w-sm mx-auto">
-                <div class="mb-4 text-4xl text-blue-600">🔐</div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-4">教師管理登入</h2>
-                <input type="password" id="teacher-password" class="w-full p-3 border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none text-center mb-4" placeholder="請輸入密碼">
-                <button onclick="verifyTeacherPassword()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all">確認登入</button>
-                <p id="auth-error" class="text-red-500 mt-2 text-sm hidden">密碼錯誤，請重新輸入 (預設 1234)</p>
-            </div>
-
-            <!-- 載入中 -->
-            <div id="teacher-loading" class="hidden flex flex-col items-center justify-center py-20 space-y-4">
-                <div class="loading-spinner"></div>
-                <p class="text-gray-500">正在處理數據...</p>
-            </div>
-
-            <!-- 儀表板內容 -->
-            <div id="teacher-content" class="hidden space-y-6">
-                <!-- 頂部概況 -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h2 class="text-2xl font-bold text-gray-800">全班答題概況</h2>
-                        <div class="flex space-x-6 mt-2" id="class-stats"></div>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <button onclick="loadTeacherData()" class="bg-blue-50 text-blue-600 px-4 py-2 rounded-lg hover:bg-blue-100 transition-all">🔄 重新整理</button>
-                        <button onclick="showResetConfirm()" class="bg-red-50 text-red-600 px-4 py-2 rounded-lg hover:bg-red-100 transition-all">🗑️ 重設資料</button>
-                        <button onclick="teacherLogout()" class="bg-gray-100 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-200 transition-all">登出</button>
-                    </div>
-                </div>
-
-                <!-- 題目分析區塊 -->
-                <div class="bg-white p-6 rounded-2xl shadow-sm">
-                    <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
-                        <span class="mr-2">📊</span> 題目答對率分析 (診斷教學弱點)
-                    </h3>
-                    <div id="question-analysis-container" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <!-- 題目統計會顯示在此 -->
-                    </div>
-                </div>
-
-                <!-- 學生列表 -->
-                <div class="bg-white rounded-2xl shadow-sm overflow-hidden overflow-x-auto">
-                    <table class="w-full text-left">
-                        <thead class="bg-gray-50 border-b text-gray-700">
-                            <tr>
-                                <th class="px-6 py-4 font-bold">學生姓名</th>
-                                <th class="px-6 py-4 font-bold text-center">總分</th>
-                                <th class="px-6 py-4 font-bold">測驗時間</th>
-                                <th class="px-6 py-4 font-bold text-right">詳情</th>
-                            </tr>
-                        </thead>
-                        <tbody id="student-list-body"></tbody>
-                    </table>
-                </div>
+                <div class="text-4xl mb-4 text-blue-600">🔐</div>
+                <h2 class="text-xl font-bold text-gray-800 mb-6">管理登入</h2>
+                <input type="password" id="teacher-password" class="w-full p-4 border-2 border-gray-100 rounded-2xl text-center mb-4 outline-none focus:border-blue-500 text-lg" placeholder="密碼 (1234)">
+                <button onclick="verifyTeacherPassword()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-700 shadow-md">確認登入</button>
             </div>
             
-            <div id="gas-warning" class="hidden mt-4 p-4 bg-red-50 text-red-700 rounded-xl text-center">
-                ⚠️ 請將部署後的網址填入 index.html 的第 36 行 GAS_WEB_APP_URL 變數中。
+            <div id="teacher-loading" class="hidden text-center py-20">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-500 font-medium">正在取得雲端最新數據...</p>
+            </div>
+            
+            <div id="teacher-content" class="hidden space-y-6">
+                <div class="bg-white p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800 mb-1">班級數據概覽</h2>
+                        <div id="class-stats" class="flex flex-wrap gap-4 text-blue-600 font-bold text-sm"></div>
+                    </div>
+                    <div class="flex flex-wrap gap-2 w-full lg:w-auto">
+                        <button onclick="loadTeacherData()" class="flex-1 lg:flex-none bg-blue-50 text-blue-600 px-4 py-2.5 rounded-xl hover:bg-blue-100 font-bold text-sm transition-all">🔄 重新整理</button>
+                        <button onclick="showResetConfirm()" class="flex-1 lg:flex-none bg-red-50 text-red-600 px-4 py-2.5 rounded-xl hover:bg-red-100 font-bold text-sm transition-all">🗑️ 清除紀錄</button>
+                        <button onclick="teacherLogout()" class="bg-gray-100 text-gray-600 px-4 py-2.5 rounded-xl hover:bg-gray-200 font-bold text-sm">登出</button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-blue-50">
+                    <h3 class="font-bold text-gray-800 mb-4 flex items-center">
+                        <span class="mr-2">📈</span>題目答對率分析 (可點選看筆跡)
+                    </h3>
+                    <div id="question-analysis-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                </div>
+
+                <div class="bg-white rounded-3xl shadow-sm overflow-hidden border border-gray-100">
+                    <div id="student-list-body" class="divide-y divide-gray-50"></div>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- 詳情 Modal -->
-    <div id="detail-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white w-full max-w-2xl rounded-3xl max-h-[80vh] overflow-y-auto p-8">
+    <div id="detail-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-2xl rounded-3xl max-h-[85vh] overflow-y-auto p-6 md:p-10 shadow-2xl no-scrollbar">
             <div class="flex justify-between items-center mb-6">
-                <h3 id="modal-title" class="text-2xl font-bold text-blue-800">答題細節</h3>
-                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
+                <h3 id="modal-title" class="text-xl md:text-2xl font-bold text-blue-800"></h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-black transition-colors text-3xl">✕</button>
             </div>
             <div id="modal-content" class="space-y-4"></div>
         </div>
     </div>
 
+    <!-- 講解模式 Modal -->
+    <div id="explain-modal" class="hidden fixed inset-0 bg-white z-[100] flex flex-col p-4 md:p-10 overflow-y-auto no-scrollbar">
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 border-b pb-6 gap-4">
+            <h3 id="explain-title" class="text-xl md:text-2xl font-bold text-blue-600">題目講解</h3>
+            <button onclick="closeExplainModal()" class="w-full md:w-auto bg-gray-100 hover:bg-gray-200 px-6 py-3 rounded-2xl font-bold text-gray-600 transition-all">關閉講解模式 ✕</button>
+        </div>
+        
+        <div class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16">
+            <div class="space-y-6">
+                <div class="bg-blue-50 p-6 md:p-10 rounded-3xl border-2 border-blue-100">
+                    <p class="text-gray-500 font-bold mb-4">題目內容</p>
+                    <div id="explain-q-text" class="text-2xl md:text-4xl font-bold leading-relaxed text-gray-800"></div>
+                </div>
+                <div class="bg-green-50 p-6 md:p-10 rounded-3xl border-2 border-green-100">
+                    <p class="text-gray-500 font-bold mb-4">正確答案</p>
+                    <div id="explain-a-text" class="text-2xl md:text-4xl font-bold text-green-700"></div>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <h4 class="text-xl font-bold text-gray-700 flex items-center">
+                    <span class="bg-red-500 w-2.5 h-6 rounded-full mr-3"></span>錯題診斷 (點選看學生計算過程)
+                </h4>
+                <div id="explain-wrong-list" class="space-y-3 max-h-[400px] overflow-y-auto pr-2 no-scrollbar"></div>
+                <div id="explain-stats" class="bg-gray-50 p-6 rounded-2xl text-lg font-bold text-gray-500 text-center border"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- 重設確認 Modal -->
-    <div id="reset-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-        <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center">
-            <div class="text-5xl mb-4 text-red-500">⚠️</div>
-            <h3 class="text-2xl font-bold text-gray-800 mb-2">確定要清空嗎？</h3>
-            <p class="text-gray-500 mb-8">這將刪除試算表中的所有紀錄（適用於切換班級）。</p>
-            <div class="flex gap-4">
+    <div id="reset-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[110]">
+        <div class="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl">
+            <div class="text-4xl mb-4 text-red-500 font-bold">⚠️</div>
+            <h3 class="text-xl font-bold text-gray-800 mb-2 text-center">確定要清空嗎？</h3>
+            <p class="text-sm text-gray-500 mb-8 text-center">這將刪除雲端的所有紀錄。</p>
+            <div class="flex gap-3">
                 <button onclick="closeResetModal()" class="flex-1 bg-gray-100 py-3 rounded-xl font-bold text-gray-600">取消</button>
-                <button onclick="resetAllData()" class="flex-1 bg-red-600 py-3 rounded-xl font-bold text-white shadow-lg shadow-red-200">確定刪除</button>
+                <button onclick="resetAllData()" class="flex-1 bg-red-600 py-3 rounded-xl font-bold text-white shadow-lg">確認刪除</button>
             </div>
         </div>
     </div>
 
     <script>
         const categories = {
-            1: "乘法定義與關係", 2: "二位數乘一位數", 3: "三位數乘一位數",
-            4: "二位數除一位數", 5: "三位數除一位數", 6: "三位數除一位數(有餘數)"
+            1: "乘除法定義", 2: "乘法性質", 3: "兩位數乘法", 4: "三位數乘法", 5: "兩位數除法", 6: "三位數除法", 7: "有餘數除法"
         };
 
         const questions = [
-            { type: 'matching', category: 1, q: "請點選名稱標籤，再放入正確位置：", equation: { a: "15", b: "4", c: "60" }, labels: ["被乘數", "乘數", "積"], answer: ["被乘數", "乘數", "積"] },
-            { type: 'choice', category: 1, q: "在乘法算式中，將被乘數與乘數交換位置，計算出的「積」會改變嗎？", options: ["會改變", "不會改變", "不一定"], answer: 1 },
-            { type: 'input', category: 2, q: "計算： $35 \\times 4 = $ ?", answer: "140" },
-            { type: 'input', category: 2, q: "計算： $82 \\times 6 = $ ?", answer: "492" },
-            { type: 'input', category: 3, q: "計算： $250 \\times 3 = $ ?", answer: "750" },
-            { type: 'input', category: 3, q: "計算： $108 \\times 9 = $ ?", answer: "972" },
-            { type: 'input', category: 4, q: "計算： $72 \\div 3 = $ ?", answer: "24" },
-            { type: 'input', category: 5, q: "計算： $624 \\div 4 = $ ?", answer: "156" },
-            { type: 'remainder', category: 6, q: "計算： $527 \\div 5 = $ ?", answer: { q: "105", r: "2" } },
-            { type: 'remainder', category: 6, q: "計算： $841 \\div 3 = $ ?", answer: { q: "280", r: "1" } }
+            { type: 'dragdrop', category: 1, q: "請把正確的名詞【拖曳】到乘法算式的位置：", equation: ["12", "\\times", "5", "=", "60"], targets: ["被乘數", "乘數", "積"], answer: ["被乘數", "乘數", "積"] },
+            { type: 'dragdrop', category: 1, q: "請把正確的名詞【拖曳】到除法算式的位置：", equation: ["48", "\\div", "6", "=", "8"], targets: ["被除數", "除數", "商"], answer: ["被除數", "除數", "商"] },
+            { type: 'choice', category: 2, q: "請看範例：<br><div class='bg-yellow-50 p-3 rounded-xl text-sm mt-2 border border-yellow-200'>範例：$3 \\times 5 = 15$ ，換成 $5 \\times 3$ 也是 $15$。</div><br>請問：被乘數和乘數位置交換後，【積】會改變嗎？", options: ["會改變", "不會改變", "不一定"], answer: 1 },
+            { type: 'sketch', category: 3, q: "計算：$43 \\times 6 = $ ?", answer: "258" },
+            { type: 'sketch', category: 3, q: "計算：$79 \\times 8 = $ ?", answer: "632" },
+            { type: 'sketch', category: 4, q: "計算：$124 \\times 5 = $ ?", answer: "620" },
+            { type: 'sketch', category: 4, q: "計算：$308 \\times 7 = $ ?", answer: "2156" },
+            { type: 'sketch', category: 5, q: "計算：$96 \\div 4 = $ ?", answer: "24" },
+            { type: 'sketch', category: 6, q: "計算：$432 \\div 6 = $ ?", answer: "72" },
+            { type: 'sketch', category: 7, q: "計算：$527 \\div 5 = $ ?", answer: { q: "105", r: "2" } },
+            { type: 'sketch', category: 7, q: "計算：$743 \\div 3 = $ ?", answer: { q: "247", r: "2" } }
         ];
 
-        let currentQuestionIndex = 0;
-        let studentResponses = [];
-        let studentName = "";
-        let selectedLabel = null;
-        let currentMatches = [null, null, null];
+        let currentQuestionIndex = 0, studentResponses = [], studentName = "", isTeacherAuthenticated = false;
+        let canvas, ctx, drawing = false;
         let allSessions = [];
-        let isTeacherAuthenticated = false;
 
-        function switchView(view) {
-            document.getElementById('student-view').classList.toggle('hidden', view !== 'student');
-            document.getElementById('teacher-view').classList.toggle('hidden', view !== 'teacher');
-            document.getElementById('nav-student').classList.toggle('nav-active', view === 'student');
-            document.getElementById('nav-teacher').classList.toggle('nav-active', view === 'teacher');
-            if (view === 'teacher') {
-                if (!isTeacherAuthenticated) showTeacherAuth();
-                else showTeacherDashboard();
-            }
-        }
-
-        function showTeacherAuth() {
-            document.getElementById('teacher-auth-screen').classList.remove('hidden');
-            document.getElementById('teacher-content').classList.add('hidden');
-            document.getElementById('teacher-loading').classList.add('hidden');
-            document.getElementById('teacher-password').focus();
+        function switchView(v) {
+            document.getElementById('student-view').classList.toggle('hidden', v !== 'student');
+            document.getElementById('teacher-view').classList.toggle('hidden', v !== 'teacher');
+            const navS = document.getElementById('nav-student');
+            const navT = document.getElementById('nav-teacher');
+            navS.className = v === 'student' ? 'px-3 py-2 text-sm md:text-base text-blue-600 font-bold border-b-2 border-blue-600 transition-all' : 'px-3 py-2 text-sm md:text-base text-gray-500 font-bold border-b-2 border-transparent transition-all';
+            navT.className = v === 'teacher' ? 'px-3 py-2 text-sm md:text-base text-blue-600 font-bold border-b-2 border-blue-600 transition-all' : 'px-3 py-2 text-sm md:text-base text-gray-500 font-bold border-b-2 border-transparent transition-all';
+            if (v === 'teacher' && isTeacherAuthenticated) loadTeacherData();
         }
 
         function verifyTeacherPassword() {
             if (document.getElementById('teacher-password').value === "1234") {
                 isTeacherAuthenticated = true;
-                showTeacherDashboard();
-            } else {
-                document.getElementById('auth-error').classList.remove('hidden');
-            }
+                document.getElementById('teacher-auth-screen').classList.add('hidden');
+                document.getElementById('teacher-content').classList.remove('hidden');
+                loadTeacherData();
+            } else alert("密碼錯誤！");
         }
 
         function teacherLogout() {
             isTeacherAuthenticated = false;
-            showTeacherAuth();
+            document.getElementById('teacher-auth-screen').classList.remove('hidden');
+            document.getElementById('teacher-content').classList.add('hidden');
+            document.getElementById('teacher-password').value = "";
         }
 
-        function showTeacherDashboard() {
-            document.getElementById('teacher-auth-screen').classList.add('hidden');
-            if (!GAS_WEB_APP_URL) document.getElementById('gas-warning').classList.remove('hidden');
-            else loadTeacherData();
+        async function loadTeacherData() {
+            if (!GAS_WEB_APP_URL) return document.getElementById('gas-warning').classList.remove('hidden');
+            document.getElementById('teacher-loading').classList.remove('hidden');
+            document.getElementById('teacher-content').classList.add('hidden');
+            try {
+                const res = await fetch(`${GAS_WEB_APP_URL}?action=get`);
+                const json = await res.json();
+                allSessions = json.data || [];
+                renderDashboard();
+            } catch (e) { console.error(e); }
+            document.getElementById('teacher-loading').classList.add('hidden');
+            document.getElementById('teacher-content').classList.remove('hidden');
         }
+
+        function renderDashboard() {
+            const stats = document.getElementById('class-stats');
+            const analysis = document.getElementById('question-analysis-container');
+            const list = document.getElementById('student-list-body');
+
+            if (!allSessions.length) {
+                stats.innerHTML = "尚未有任何作答數據";
+                analysis.innerHTML = "<p class='col-span-full text-center py-10 text-gray-400'>目前無數據</p>";
+                list.innerHTML = "<div class='p-10 text-center text-gray-400'>目前無測驗紀錄</div>";
+                return;
+            }
+
+            const avg = Math.round(allSessions.reduce((a, b) => a + parseInt(b.score), 0) / allSessions.length);
+            stats.innerHTML = `<span>👥 人數：${allSessions.length} 人</span><span class="ml-4">🎯 平均：${avg} 分</span>`;
+
+            list.innerHTML = allSessions.map(s => `
+                <div class="px-6 py-4 flex justify-between items-center hover:bg-blue-50/30 transition-all group">
+                    <span class="font-bold text-gray-700">${s.studentName}</span>
+                    <div class="flex items-center gap-4 md:gap-10">
+                        <span class="w-12 text-center font-bold text-blue-600">${s.score}</span>
+                        <button onclick="viewDetail('${s.id}')" class="bg-gray-100 group-hover:bg-blue-100 px-3 py-1.5 rounded-lg text-blue-500 font-bold transition-all text-xs">詳情</button>
+                    </div>
+                </div>`).join('');
+
+            const qStats = questions.map(() => ({ correct: 0, total: 0 }));
+            allSessions.forEach(s => {
+                try {
+                    const res = JSON.parse(s.responses);
+                    res.forEach((r, i) => { if(qStats[i]) { qStats[i].total++; if(r.isCorrect) qStats[i].correct++; } });
+                } catch(e) {}
+            });
+
+            analysis.innerHTML = questions.map((q, i) => {
+                const rate = Math.round((qStats[i].correct / qStats[i].total) * 100) || 0;
+                const isWarning = rate < 60;
+                return `
+                    <div onclick="openExplainModal(${i})" class="analysis-card bg-white p-5 rounded-2xl border ${isWarning ? 'border-red-100 bg-red-50/20' : 'border-gray-100'}">
+                        <div class="flex justify-between items-start mb-3">
+                            <span class="text-[10px] font-bold px-2 py-1 rounded bg-gray-100 uppercase tracking-wider">Q${i+1}</span>
+                            <span class="text-sm font-bold ${isWarning ? 'text-red-500' : 'text-blue-600'}">${rate}% 答對</span>
+                        </div>
+                        <div class="text-sm font-bold text-gray-600 line-clamp-1 mb-4 truncate">${q.q.replace(/<br>.*$/g, '')}</div>
+                        <div class="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                            <div class="h-full ${isWarning ? 'bg-red-500' : 'bg-blue-500'}" style="width: ${rate}%"></div>
+                        </div>
+                    </div>`;
+            }).join('');
+            if (window.MathJax) MathJax.typesetPromise([analysis]);
+        }
+
+        function openExplainModal(index) {
+            const q = questions[index];
+            const modal = document.getElementById('explain-modal');
+            const wrongList = document.getElementById('explain-wrong-list');
+            
+            document.getElementById('explain-title').innerText = `Q${index + 1} 錯題診斷模式`;
+            let qHtml = `<div class="mb-4">${q.q}</div>`;
+            if (q.type === 'dragdrop') qHtml += `<div class="p-6 bg-white rounded-3xl border shadow-inner text-center text-4xl md:text-5xl font-black">$${q.equation.join(' ')}$</div>`;
+            document.getElementById('explain-q-text').innerHTML = qHtml;
+            
+            let ansStr = (typeof q.answer === 'object' && !Array.isArray(q.answer)) ? `商：${q.answer.q}，餘數：${q.answer.r}` : (Array.isArray(q.answer) ? q.answer.join('、') : q.answer);
+            document.getElementById('explain-a-text').innerText = ansStr;
+
+            let wrongItems = [], correctCount = 0;
+            allSessions.forEach(s => {
+                const res = JSON.parse(s.responses);
+                const r = res[index];
+                if (r.isCorrect) correctCount++;
+                else wrongItems.push({ name: s.studentName, ans: r.userAnswer, sketch: r.sketch });
+            });
+
+            if (wrongItems.length === 0) {
+                wrongList.innerHTML = "<div class='text-center py-16 text-green-500 text-2xl font-bold'>本題全體答對！</div>";
+            } else {
+                wrongList.innerHTML = wrongItems.map((item, idx) => `
+                    <div class="bg-red-50/50 p-4 rounded-2xl border border-red-50">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="font-bold text-gray-700">${item.name}</span>
+                            <span class="text-xl font-bold text-red-500">${item.ans}</span>
+                        </div>
+                        ${item.sketch ? `
+                            <div class="mt-2 text-center bg-white rounded-xl p-2 border">
+                                <p class="text-[10px] text-gray-400 mb-1">計算過程筆跡</p>
+                                <img src="${item.sketch}" class="sketch-preview mx-auto">
+                            </div>
+                        ` : ''}
+                    </div>`).join('');
+            }
+
+            document.getElementById('explain-stats').innerText = `✅ 答對：${correctCount} | ❌ 答錯：${wrongItems.length}`;
+            modal.classList.remove('hidden');
+            if (window.MathJax) MathJax.typesetPromise([document.getElementById('explain-q-text')]);
+        }
+
+        function closeExplainModal() { document.getElementById('explain-modal').classList.add('hidden'); }
 
         function startQuiz() {
             const name = document.getElementById('student-name').value.trim();
-            if (!name) return alert("請輸入姓名");
+            if (!name) return;
             studentName = name;
             document.getElementById('start-screen').classList.add('hidden');
             document.getElementById('quiz-screen').classList.remove('hidden');
@@ -251,58 +365,128 @@
             document.getElementById('progress-text').innerText = `問題 ${currentQuestionIndex + 1} / ${questions.length}`;
             document.getElementById('category-text').innerText = categories[qData.category];
 
-            let html = `<h2 class="text-2xl font-bold mb-8 text-gray-800">${qData.q}</h2>`;
+            let html = `<h2 class="text-lg md:text-xl font-bold mb-6 text-gray-800 leading-relaxed text-center">${qData.q}</h2>`;
 
-            if (qData.type === 'matching') {
+            if (qData.type === 'dragdrop') {
                 html += `
-                    <div class="flex flex-wrap justify-center items-end gap-4 mb-12 text-3xl font-bold">
-                        <div class="flex flex-col items-center"><span>${qData.equation.a}</span><div onclick="placeLabel(0)" id="slot-0" class="w-24 h-12 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-sm text-blue-400 bg-blue-50 cursor-pointer">?</div></div>
-                        <span class="pb-2">$\\times$</span>
-                        <div class="flex flex-col items-center"><span>${qData.equation.b}</span><div onclick="placeLabel(1)" id="slot-1" class="w-24 h-12 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-sm text-blue-400 bg-blue-50 cursor-pointer">?</div></div>
-                        <span class="pb-2">$=$</span>
-                        <div class="flex flex-col items-center"><span>${qData.equation.c}</span><div onclick="placeLabel(2)" id="slot-2" class="w-24 h-12 border-2 border-dashed border-blue-200 rounded-xl flex items-center justify-center text-sm text-blue-400 bg-blue-50 cursor-pointer">?</div></div>
+                    <div class="flex flex-wrap justify-center items-end gap-3 md:gap-6 mb-10 text-2xl md:text-4xl font-bold">
+                        ${qData.equation.map((item, idx) => {
+                            if (item === "\\times" || item === "\\div" || item === "=") return `<span class="pb-6">$${item}$</span>`;
+                            const slotIdx = [0,2,4].indexOf(idx);
+                            return `
+                                <div class="flex flex-col items-center">
+                                    <span class="mb-3 text-gray-400 text-xs font-normal">數位</span>
+                                    <span class="mb-2">${item}</span>
+                                    <div id="target-${slotIdx}" ondrop="drop(event)" ondragover="allowDrop(event)" class="drop-zone w-24 h-12 rounded-xl flex items-center justify-center text-[10px] text-blue-400 bg-blue-50/50 uppercase font-bold">拖入這裏</div>
+                                </div>`;
+                        }).join('')}
                     </div>
-                    <div class="flex justify-center gap-3 mb-8">${qData.labels.map((l, i) => `<button id="label-${i}" onclick="selectLabel('${l}', ${i})" class="px-4 py-2 border-2 border-blue-500 text-blue-600 rounded-full font-bold hover:bg-blue-50">${l}</button>`).join('')}</div>
-                    <button onclick="submitMatching()" class="w-full bg-blue-600 text-white py-4 rounded-xl font-bold shadow-lg">確認送出</button>`;
+                    <div class="flex flex-wrap justify-center gap-3 mb-10">
+                        ${qData.targets.map((label, idx) => `<div id="label-${idx}" draggable="true" ondragstart="drag(event)" class="drag-item px-5 py-2.5 bg-blue-600 text-white rounded-2xl font-bold text-sm shadow-md active:bg-blue-700">${label}</div>`).join('')}
+                    </div>
+                    <button onclick="submitDragDrop()" class="w-full bg-green-600 text-white py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition-all">確認送出</button>
+                `;
+            } else if (qData.type === 'sketch') {
+                html += `
+                    <div id="sketch-pad-container" class="mb-6">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-xs font-bold text-gray-400 uppercase tracking-widest">📝 手寫直式計算區域</span>
+                            <button onclick="clearCanvas()" class="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg text-gray-500 font-bold transition-all">重新繪製</button>
+                        </div>
+                        <canvas id="sketch-pad" class="shadow-inner border-2"></canvas>
+                    </div>
+                    <div class="space-y-4">
+                        ${qData.category === 7 ? `
+                            <div class="flex gap-4">
+                                <div class="flex-1"><label class="text-[10px] font-bold text-gray-400 block mb-1">商</label><input type="number" id="ans-q" class="w-full p-4 text-2xl border-2 rounded-2xl outline-none focus:border-blue-500 shadow-sm text-center"></div>
+                                <div class="flex-1"><label class="text-[10px] font-bold text-gray-400 block mb-1">餘數</label><input type="number" id="ans-r" class="w-full p-4 text-2xl border-2 rounded-2xl outline-none focus:border-blue-500 shadow-sm text-center"></div>
+                            </div>
+                        ` : `<input type="number" id="ans-input" class="w-full p-4 text-2xl border-2 rounded-2xl outline-none focus:border-blue-500 shadow-sm text-center" placeholder="輸入最後結果">`}
+                        <button onclick="submitSketch()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold shadow-lg active:scale-95 transition-all">完成計算題</button>
+                    </div>
+                `;
             } else if (qData.type === 'choice') {
-                html += `<div class="space-y-4">${qData.options.map((opt, i) => `<button onclick="handleChoice(${i})" class="w-full text-left p-4 rounded-xl border-2 border-gray-100 hover:border-blue-500 transition-all font-medium text-lg">${i+1}. ${opt}</button>`).join('')}</div>`;
-            } else if (qData.type === 'input') {
-                html += `<input type="number" id="math-input" class="w-full p-4 text-2xl border-2 border-gray-100 rounded-xl focus:border-blue-500 outline-none"><button onclick="submitInput()" class="w-full mt-6 bg-blue-600 text-white py-4 rounded-xl font-bold">下一題</button>`;
-            } else if (qData.type === 'remainder') {
-                html += `<div class="space-y-4"><div class="flex items-center space-x-4"><span class="font-bold">商：</span><input type="number" id="q-input" class="flex-1 p-4 text-2xl border-2 border-gray-100 rounded-xl"></div><div class="flex items-center space-x-4"><span class="font-bold">餘：</span><input type="number" id="r-input" class="flex-1 p-4 text-2xl border-2 border-gray-100 rounded-xl"></div><button onclick="submitRemainder()" class="w-full mt-6 bg-blue-600 text-white py-4 rounded-xl font-bold">下一題</button></div>`;
+                html += `<div class="space-y-3">${qData.options.map((opt, i) => `<button onclick="handleChoice(${i})" class="w-full text-left p-5 rounded-2xl border-2 border-gray-100 hover:border-blue-500 hover:bg-blue-50 transition-all font-bold group text-gray-700 text-center"><span class="inline-block w-8 h-8 bg-gray-50 group-hover:bg-blue-100 rounded-lg text-center leading-8 mr-4 text-sm">${i+1}</span>${opt}</button>`).join('')}</div>`;
             }
 
             container.innerHTML = html;
             if (window.MathJax) MathJax.typesetPromise([container]);
+            if (qData.type === 'sketch') initCanvas();
         }
 
-        function selectLabel(l, i) { 
-            selectedLabel = l; 
-            document.querySelectorAll('[id^="label-"]').forEach(el => el.classList.remove('label-selected')); 
-            document.getElementById(`label-${i}`).classList.add('label-selected'); 
+        function allowDrop(e) { e.preventDefault(); e.target.classList.add('drag-over'); }
+        function drag(e) { e.dataTransfer.setData("text", e.target.innerText); }
+        function drop(e) {
+            e.preventDefault(); e.target.classList.remove('drag-over');
+            const data = e.dataTransfer.getData("text");
+            e.target.innerText = data; e.target.className = "drop-zone w-24 h-12 rounded-xl flex items-center justify-center text-sm text-white bg-blue-600 font-bold shadow-sm";
         }
-        function placeLabel(i) { 
-            if (!selectedLabel) return; 
-            currentMatches[i] = selectedLabel; 
-            document.getElementById(`slot-${i}`).innerText = selectedLabel; 
-            document.getElementById(`slot-${i}`).classList.add('bg-blue-100', 'text-blue-700', 'font-bold'); 
+        function submitDragDrop() {
+            const zones = [document.getElementById('target-0'), document.getElementById('target-1'), document.getElementById('target-2')];
+            if (zones.some(z => z.innerText === "拖入這裏")) return;
+            handleFinalAnswer(zones.map(z => z.innerText).join(','), questions[currentQuestionIndex].answer.join(','));
         }
-        function submitMatching() { 
-            if(currentMatches.includes(null)) return; 
-            handleFinalAnswer(currentMatches.join(','), questions[currentQuestionIndex].answer.join(',')); 
-            currentMatches = [null,null,null]; selectedLabel = null; 
+
+        function initCanvas() {
+            canvas = document.getElementById('sketch-pad');
+            ctx = canvas.getContext('2d');
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            const getPos = (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
+            };
+            const start = (e) => { drawing = true; const pos = getPos(e); ctx.beginPath(); ctx.moveTo(pos.x, pos.y); };
+            const draw = (e) => { if (!drawing) return; e.preventDefault(); const pos = getPos(e); ctx.lineTo(pos.x, pos.y); ctx.stroke(); };
+            const stop = () => { drawing = false; };
+            canvas.addEventListener('mousedown', start); canvas.addEventListener('mousemove', draw); window.addEventListener('mouseup', stop);
+            canvas.addEventListener('touchstart', start); canvas.addEventListener('touchmove', draw); window.addEventListener('touchend', stop);
         }
+
+        function resizeCanvas() {
+            if (!canvas) return;
+            const container = document.getElementById('sketch-pad-container');
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr;
+            canvas.height = (rect.width * 0.5) * dpr;
+            ctx.scale(dpr, dpr);
+            ctx.strokeStyle = '#1e40af'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        }
+
+        function clearCanvas() { ctx.clearRect(0, 0, canvas.width, canvas.height); }
+
+        function submitSketch() {
+            const q = questions[currentQuestionIndex];
+            let u, c;
+            // 擷取手寫圖片 (壓縮以減少傳輸負擔)
+            const sketch = canvas.toDataURL('image/jpeg', 0.4);
+
+            if (q.category === 7) {
+                const qv = document.getElementById('ans-q').value, rv = document.getElementById('ans-r').value;
+                if (!qv || !rv) return;
+                u = `商${qv}餘${rv}`; c = `商${q.answer.q}餘${q.answer.r}`;
+            } else {
+                u = document.getElementById('ans-input').value;
+                if (!u) return;
+                c = q.answer;
+            }
+            handleFinalAnswer(u, c, sketch);
+        }
+
         function handleChoice(i) { handleFinalAnswer(questions[currentQuestionIndex].options[i], questions[currentQuestionIndex].options[questions[currentQuestionIndex].answer]); }
-        function submitInput() { const v = document.getElementById('math-input').value; if(!v) return; handleFinalAnswer(v, questions[currentQuestionIndex].answer); }
-        function submitRemainder() { const q = document.getElementById('q-input').value, r = document.getElementById('r-input').value; if(!q || !r) return; handleFinalAnswer(`商${q}餘${r}`, `商${questions[currentQuestionIndex].answer.q}餘${questions[currentQuestionIndex].answer.r}`); }
 
-        function handleFinalAnswer(userAns, correctAns) {
-            studentResponses.push({
-                question: questions[currentQuestionIndex].q,
-                category: categories[questions[currentQuestionIndex].category],
-                userAnswer: userAns,
-                correctAnswer: correctAns,
-                isCorrect: userAns == correctAns
+        function handleFinalAnswer(u, c, sketch = null) {
+            studentResponses.push({ 
+                question: questions[currentQuestionIndex].q, 
+                category: categories[questions[currentQuestionIndex].category], 
+                userAnswer: u, 
+                correctAnswer: c, 
+                isCorrect: u == c,
+                sketch: sketch
             });
             currentQuestionIndex++;
             if (currentQuestionIndex < questions.length) showQuestion();
@@ -314,121 +498,39 @@
             document.getElementById('result-screen').classList.remove('hidden');
             const score = Math.round((studentResponses.filter(r => r.isCorrect).length / questions.length) * 100);
             document.getElementById('final-score-display').innerText = score;
-
-            if (!GAS_WEB_APP_URL) return;
-            document.getElementById('upload-status').classList.remove('hidden');
-            try {
-                await fetch(GAS_WEB_APP_URL, {
-                    method: "POST",
-                    mode: "no-cors",
-                    body: JSON.stringify({ action: "submit", studentName, score, responses: JSON.stringify(studentResponses) })
-                });
-                document.getElementById('upload-status').innerHTML = "✅ 已儲存至雲端試算表";
-            } catch (e) {
-                document.getElementById('upload-status').innerHTML = "❌ 儲存失敗，請確認網址";
-            }
-        }
-
-        async function loadTeacherData() {
-            document.getElementById('teacher-loading').classList.remove('hidden');
-            document.getElementById('teacher-content').classList.add('hidden');
-            try {
-                const response = await fetch(`${GAS_WEB_APP_URL}?action=get`);
-                const result = await response.json();
-                allSessions = result.data;
-                renderDashboard();
-            } catch (e) { alert("載入失敗：" + e.message); }
-            finally {
-                document.getElementById('teacher-loading').classList.add('hidden');
-                document.getElementById('teacher-content').classList.remove('hidden');
-            }
-        }
-
-        function renderDashboard() {
-            const listBody = document.getElementById('student-list-body');
-            const stats = document.getElementById('class-stats');
-            const analysisContainer = document.getElementById('question-analysis-container');
-            
-            if (!allSessions || allSessions.length === 0) {
-                listBody.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-gray-400">尚無作答紀錄</td></tr>';
-                stats.innerHTML = ""; 
-                analysisContainer.innerHTML = "<p class='col-span-full text-center text-gray-400'>尚無足夠數據進行題目分析</p>";
-                return;
-            }
-
-            // 1. 基本統計
-            const avg = Math.round(allSessions.reduce((a,b) => a + parseInt(b.score), 0) / allSessions.length);
-            stats.innerHTML = `<div class="text-blue-600">測驗人數: <b>${allSessions.length}</b></div><div class="text-green-600">全班平均: <b>${avg}</b></div>`;
-            
-            // 2. 題目答對率分析邏輯
-            const qStats = questions.map(() => ({ correct: 0, total: 0 }));
-            allSessions.forEach(session => {
+            if (GAS_WEB_APP_URL) {
+                document.getElementById('upload-status').classList.remove('hidden');
                 try {
-                    const res = JSON.parse(session.responses);
-                    res.forEach((r, idx) => {
-                        if (qStats[idx]) {
-                            qStats[idx].total++;
-                            if (r.isCorrect) qStats[idx].correct++;
-                        }
-                    });
-                } catch(e) {}
-            });
-
-            analysisContainer.innerHTML = questions.map((q, i) => {
-                const stat = qStats[i];
-                const rate = stat.total > 0 ? Math.round((stat.correct / stat.total) * 100) : 0;
-                const isCritical = rate < 50; // 低於 50% 視為重點加強題目
-                
-                return `
-                    <div class="p-4 border rounded-xl bg-gray-50 flex flex-col justify-between">
-                        <div>
-                            <div class="flex justify-between items-start mb-2">
-                                <span class="text-xs font-bold px-2 py-1 rounded ${isCritical ? 'bg-red-100 text-red-600' : 'bg-blue-100 text-blue-600'}">
-                                    第 ${i+1} 題
-                                </span>
-                                <span class="text-lg font-bold ${isCritical ? 'text-red-600' : 'text-gray-700'}">${rate}% 答對率</span>
-                            </div>
-                            <div class="text-sm text-gray-600 mb-3 line-clamp-2" title="${q.q}">${q.q}</div>
-                        </div>
-                        <div>
-                            <div class="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                                <div class="h-full ${isCritical ? 'bg-red-500' : 'bg-green-500'}" style="width: ${rate}%"></div>
-                            </div>
-                            <div class="text-[10px] text-gray-400 mt-1">答對 ${stat.correct} 人 / 總計 ${stat.total} 人</div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            // 3. 學生列表
-            listBody.innerHTML = allSessions.map(s => `
-                <tr class="border-b hover:bg-gray-50">
-                    <td class="px-6 py-4 font-medium">${s.studentName}</td>
-                    <td class="px-6 py-4 text-center font-bold text-blue-600">${s.score}</td>
-                    <td class="px-6 py-4 text-sm text-gray-500">${s.timestamp}</td>
-                    <td class="px-6 py-4 text-right"><button onclick="viewDetail('${s.id}')" class="text-blue-500 font-medium">查看詳情</button></td>
-                </tr>`).join('');
-            
-            // 重新渲染 LaTeX
-            if (window.MathJax) MathJax.typesetPromise([analysisContainer]);
+                    await fetch(GAS_WEB_APP_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ action: "submit", studentName, score, responses: JSON.stringify(studentResponses) }) });
+                    document.getElementById('upload-status').innerHTML = "✅ 作答與筆跡同步成功";
+                } catch(e) { document.getElementById('upload-status').innerHTML = "❌ 同步失敗"; }
+            }
         }
 
         function viewDetail(id) {
             const s = allSessions.find(x => x.id == id);
             const res = JSON.parse(s.responses);
-            document.getElementById('modal-title').innerText = `${s.studentName} 的答題紀錄`;
+            document.getElementById('modal-title').innerText = `${s.studentName} 的詳細作答`;
             document.getElementById('modal-content').innerHTML = res.map((r, i) => `
-                <div class="p-4 border rounded-xl ${r.isCorrect ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}">
-                    <div class="font-bold text-sm text-gray-500 mb-1">第 ${i+1} 題 | ${r.category}</div>
-                    <div class="font-medium text-gray-800 mb-2">${r.question}</div>
-                    <div class="flex text-sm">
-                        <div class="mr-6">學生答案：<b class="${r.isCorrect ? 'text-green-600' : 'text-red-600'}">${r.userAnswer}</b></div>
-                        ${!r.isCorrect ? `<div class="text-gray-400">正確答案：${r.correctAnswer}</div>` : ''}
+                <div class="p-4 md:p-6 border rounded-2xl ${r.isCorrect ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'}">
+                    <div class="font-bold text-[10px] text-gray-400 mb-2 uppercase tracking-widest text-center">問題 ${i+1} | ${r.category}</div>
+                    <div class="font-bold text-gray-800 mb-4 text-center">${r.question}</div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
+                        <div class="p-3 bg-white/50 rounded-xl text-center">答案：<b class="${r.isCorrect ? 'text-green-600' : 'text-red-600'}">${r.userAnswer}</b></div>
+                        ${!r.isCorrect ? `<div class="p-3 bg-white/50 rounded-xl text-center">正確：<b class="text-gray-700">${r.correctAnswer}</b></div>` : ''}
                     </div>
+                    ${r.sketch ? `
+                        <div class="mt-4 p-3 bg-white rounded-xl border border-gray-100 text-center">
+                            <p class="text-[10px] text-gray-400 mb-2">計算過程備註 (筆跡)</p>
+                            <img src="${r.sketch}" class="sketch-preview mx-auto">
+                        </div>
+                    ` : ''}
                 </div>`).join('');
             document.getElementById('detail-modal').classList.remove('hidden');
+            if (window.MathJax) MathJax.typesetPromise([document.getElementById('modal-content')]);
         }
 
+        function closeModal() { document.getElementById('detail-modal').classList.add('hidden'); }
         function showResetConfirm() { document.getElementById('reset-modal').classList.remove('hidden'); }
         function closeResetModal() { document.getElementById('reset-modal').classList.add('hidden'); }
         async function resetAllData() {
@@ -438,9 +540,8 @@
             try {
                 await fetch(GAS_WEB_APP_URL, { method: "POST", mode: "no-cors", body: JSON.stringify({ action: "clear" }) });
                 setTimeout(loadTeacherData, 1500);
-            } catch (e) { alert("重設失敗"); }
+            } catch (e) { alert("失敗"); }
         }
-        function closeModal() { document.getElementById('detail-modal').classList.add('hidden'); }
     </script>
 </body>
 </html>
